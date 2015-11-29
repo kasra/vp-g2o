@@ -1,3 +1,21 @@
+### Variable Projection Solver
+This fork of g2o includes a new solver: "vp_var_cholmod".
+
+This is an improved implementation of the algorithm proposed in (http://www.roboticsproceedings.org/rss11/p23.html).
+
+*Notes:*
+- To be used with g2o cli ("vp_var_cholmod").
+- Current version assumes the anchor is the origin (add e.g., "FIX 0" to your g2o dataset if VERTEX 0 is (0,0,0))
+- Variable Projection parameters needs to be set in "optimization_algorithm_variable_projection.cpp".
+- Current version only supports SE2 types (SE3 will be available soon).
+- g2o_viewer has not been tested.
+
+Kasra Khosoussi (https://kasra.github.io)
+
+Centre for Autonomous Systems (CAS)
+
+University of Technology Sydney
+
 g2o - General Graph Optimization
 ================================
 
