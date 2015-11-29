@@ -443,6 +443,19 @@ namespace g2o{
     }
   }
 
+  void SparseOptimizer::updateLinear(const double* update)
+  {
+    // update the linear variables
+    double est[3] = {0., 0., 0.};
+    for (size_t i=0; i < _ivMap.size(); ++i) {
+      OptimizableGraph::Vertex* v= _ivMap[i];
+      v->getEstimateData(est);
+      est[0] = *(update+2*i);
+      est[1] = *(update+2*i+1);
+      v->setEstimateData(est);
+    }
+  }
+
   void SparseOptimizer::setComputeBatchStatistics(bool computeBatchStatistics)
   {
     if ((_computeBatchStatistics == true) && (computeBatchStatistics == false)) {

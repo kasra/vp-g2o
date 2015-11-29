@@ -49,6 +49,7 @@ namespace g2o {
         const VertexSE2* v2 = static_cast<const VertexSE2*>(_vertices[1]);
         SE2 delta = _inverseMeasurement * (v1->estimate().inverse()*v2->estimate());
         _error = delta.toVector();
+        _errorLinear(2,0) = _error(2,0);
       }
       virtual bool read(std::istream& is);
       virtual bool write(std::ostream& os) const;
@@ -56,6 +57,7 @@ namespace g2o {
       virtual void setMeasurement(const SE2& m){
         _measurement = m;
         _inverseMeasurement = m.inverse();
+        _errorLinear.template topLeftCorner<2,1>() = _inverseMeasurement.toVector().template topLeftCorner<2,1>();
       }
 
       virtual bool setMeasurementData(const double* d){

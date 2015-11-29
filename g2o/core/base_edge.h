@@ -87,6 +87,7 @@ namespace g2o {
       Measurement _measurement;
       InformationType _information;
       ErrorVector _error;
+      ErrorVector _errorLinear;
 
       /**
        * calculate the robust information matrix by updating the information matrix of the error

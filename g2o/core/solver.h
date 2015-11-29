@@ -57,6 +57,7 @@ namespace g2o {
        * build the structure of the system
        */
       virtual bool buildStructure(bool zeroBlocks = false) = 0;
+      virtual bool buildStructureLinear(bool zeroBlocks = false) = 0;
       /**
        * update the structures for online processing
        */
@@ -65,6 +66,9 @@ namespace g2o {
        * build the current system
        */
       virtual bool buildSystem() = 0;
+      virtual bool buildSystemLinear() = 0;
+
+      virtual void buildSystemSpherical() = 0;
 
       /**
        * solve Ax = b
@@ -88,6 +92,11 @@ namespace g2o {
       virtual bool setLambda(double lambda, bool backup = false) = 0;
 
       /**
+       * VP's projection step
+       */
+      virtual bool project(bool spherical = false) = 0;
+
+      /**
        * restore a previosly made backup of the diagonal
        */
       virtual void restoreDiagonal() = 0;
@@ -95,12 +104,20 @@ namespace g2o {
       //! return x, the solution vector
       double* x() { return _x;}
       const double* x() const { return _x;}
+
+      double* xLinear() { return _xLinear;}
+      const double* xLinear() const { return _xLinear;}
       //! return b, the right hand side of the system
       double* b() { return _b;}
       const double* b() const { return _b;}
 
+      double* bLinear() { return _bLinear;}
+      const double* bLinear() const { return _bLinear;}
+
       //! return the size of the solution vector (x) and b
       size_t vectorSize() const { return _xSize;}
+
+      size_t vectorLinearSize() const { return _xLinearSize;}
 
       //! the optimizer (graph) on which the solver works
       SparseOptimizer* optimizer() const { return _optimizer;}
@@ -135,8 +152,10 @@ namespace g2o {
     protected:
       SparseOptimizer* _optimizer;
       double* _x;
+      double* _xLinear;
       double* _b;
-      size_t _xSize, _maxXSize;
+      double* _bLinear;
+      size_t _xSize, _maxXSize, _xLinearSize;
       bool _isLevenberg; ///< the system we gonna solve is a Levenberg-Marquardt system
       size_t _additionalVectorSpace;
 

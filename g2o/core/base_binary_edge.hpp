@@ -80,7 +80,10 @@ void BaseBinaryEdge<D, E, VertexXiType, VertexXjType>::constructQuadraticForm()
     to->lockQuadraticForm();
 #endif
     const InformationType& omega = _information;
+
     Eigen::Matrix<double, D, 1, Eigen::ColMajor> omega_r = - omega * _error;
+    Eigen::Matrix<double, D, 1, Eigen::ColMajor> omega_rLinear =  - omega * _errorLinear;
+
     if (this->robustKernel() == 0) {
       if (fromNotFixed) {
         Eigen::Matrix<double, VertexXiType::Dimension, D, Eigen::ColMajor> AtO = A.transpose() * omega;
@@ -97,6 +100,12 @@ void BaseBinaryEdge<D, E, VertexXiType, VertexXjType>::constructQuadraticForm()
         to->b().noalias() += B.transpose() * omega_r;
         to->A().noalias() += B.transpose() * omega * B;
       }
+
+      if (fromNotFixed)
+        from->bLinear().noalias() += A.transpose().template topLeftCorner<2,D>() * omega_rLinear;
+      if (toNotFixed)
+        to->bLinear().noalias() += B.transpose().template topLeftCorner<2,D>() * omega_rLinear;
+
     } else { // robust (weighted) error according to some kernel
       double error = this->chi2();
       Vector3D rho;
@@ -121,6 +130,98 @@ void BaseBinaryEdge<D, E, VertexXiType, VertexXjType>::constructQuadraticForm()
         to->A().noalias() += B.transpose() * weightedOmega * B;
       }
     }
+#ifdef G2O_OPENMP
+    to->unlockQuadraticForm();
+    from->unlockQuadraticForm();
+#endif
+  }
+}
+
+
+template <int D, typename E, typename VertexXiType, typename VertexXjType>
+void BaseBinaryEdge<D, E, VertexXiType, VertexXjType>::constructQuadraticFormLinear()
+{
+  VertexXiType* from = static_cast<VertexXiType*>(_vertices[0]);
+  VertexXjType* to   = static_cast<VertexXjType*>(_vertices[1]);
+
+  // get the Jacobian of the nodes in the manifold domain
+  const JacobianXiOplusType& A = jacobianOplusXi();
+  const JacobianXjOplusType& B = jacobianOplusXj();
+
+
+  bool fromNotFixed = !(from->fixed());
+  bool toNotFixed = !(to->fixed());
+
+  if (fromNotFixed || toNotFixed) {
+#ifdef G2O_OPENMP
+    from->lockQuadraticForm();
+    to->lockQuadraticForm();
+#endif
+    const InformationType& omega = _information;
+
+    Eigen::Matrix<double, D, 1, Eigen::ColMajor> omega_rLinear =  - omega * _errorLinear;
+    Eigen::Matrix<double, VertexXiType::Dimension, VertexXiType::Dimension, Eigen::ColMajor> fromTmp;
+    Eigen::Matrix<double, VertexXjType::Dimension, VertexXjType::Dimension, Eigen::ColMajor> toTmp;
+    Eigen::Matrix<double, VertexXiType::Dimension, VertexXjType::Dimension, Eigen::ColMajor> ijTmp;
+
+    assert(this->robustKernel() == 0 && "Robust kernel is not supported by VP");
+    if (fromNotFixed) {
+      Eigen::Matrix<double, VertexXiType::Dimension, D, Eigen::ColMajor> AtO = A.transpose() * omega;
+      fromTmp = AtO*A;
+      from->ALinear().noalias() += fromTmp.template topLeftCorner<2,2>();
+      if (toNotFixed ) {
+        ijTmp = AtO * B;
+        if (_hessianRowMajor) // we have to write to the block as transposed
+          _hessianLinearTransposed.noalias() += ijTmp.transpose().template topLeftCorner<2,2>();
+        else
+          _hessianLinear.noalias() += ijTmp.template topLeftCorner<2,2>();
+      }
+    } 
+    if (toNotFixed) {
+      toTmp = B.transpose() * omega * B;
+      to->ALinear().noalias() +=  toTmp.template topLeftCorner<2,2>();
+    }
+
+    if (fromNotFixed)
+      from->bLinear().noalias() += A.transpose().template topLeftCorner<2,D>() * omega_rLinear;
+    if (toNotFixed)
+      to->bLinear().noalias() += B.transpose().template topLeftCorner<2,D>() * omega_rLinear;
+#ifdef G2O_OPENMP
+    to->unlockQuadraticForm();
+    from->unlockQuadraticForm();
+#endif
+  }
+}
+
+template <int D, typename E, typename VertexXiType, typename VertexXjType>
+void BaseBinaryEdge<D, E, VertexXiType, VertexXjType>::constructQuadraticFormRHS()
+{
+  VertexXiType* from = static_cast<VertexXiType*>(_vertices[0]);
+  VertexXjType* to   = static_cast<VertexXjType*>(_vertices[1]);
+
+  // get the Jacobian of the nodes in the manifold domain
+  const JacobianXiOplusType& A = jacobianOplusXi();
+  const JacobianXjOplusType& B = jacobianOplusXj();
+
+
+  bool fromNotFixed = !(from->fixed());
+  bool toNotFixed = !(to->fixed());
+
+  if (fromNotFixed || toNotFixed) {
+#ifdef G2O_OPENMP
+    from->lockQuadraticForm();
+    to->lockQuadraticForm();
+#endif
+    const InformationType& omega = _information;
+
+    Eigen::Matrix<double, D, 1, Eigen::ColMajor> omega_rLinear =  - omega * _errorLinear;
+
+    assert(this->robustKernel() == 0 && "Robust kernel is not supported by VP");
+
+    if (fromNotFixed)
+      from->bLinear().noalias() += A.transpose().template topLeftCorner<2,D>() * omega_rLinear;
+    if (toNotFixed)
+      to->bLinear().noalias() += B.transpose().template topLeftCorner<2,D>() * omega_rLinear;
 #ifdef G2O_OPENMP
     to->unlockQuadraticForm();
     from->unlockQuadraticForm();
@@ -224,4 +325,20 @@ void BaseBinaryEdge<D, E, VertexXiType, VertexXjType>::mapHessianMemory(double* 
     new (&_hessian) HessianBlockType(d, VertexXiType::Dimension, VertexXjType::Dimension);
   }
   _hessianRowMajor = rowMajor;
+}
+
+
+template <int D, typename E, typename VertexXiType, typename VertexXjType>
+void BaseBinaryEdge<D, E, VertexXiType, VertexXjType>::mapHessianMemoryLinear(double* d, int i, int j, bool rowMajor)
+{
+  (void) i; (void) j;
+  //assert(i == 0 && j == 1);
+  // FIXME TODO dimension
+  if (rowMajor) {
+    new (&_hessianLinearTransposed) HessianLinearBlockTransposedType(d, 2, 2);
+  } else {
+    new (&_hessianLinear) HessianLinearBlockType(d, 2, 2);
+  }
+  // do we really need this?
+  _hessianLinearRowMajor = rowMajor;
 }

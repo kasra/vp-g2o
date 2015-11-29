@@ -93,6 +93,24 @@ class LinearSolverCholmod : public LinearSolverCCS<MatrixType>
       _cholmodCommon.supernodal = CHOLMOD_AUTO; //CHOLMOD_SUPERNODAL; //CHOLMOD_SIMPLICIAL;
     }
 
+    /* save a sparse matrix to an octave file */
+    /* overwrites the existing file */
+    void save_octave_sparse(cholmod_sparse* A, const std::string file_name) {
+      FILE* tmp_file = fopen(file_name.c_str(), "w");
+      cholmod_write_sparse(tmp_file, A, 0, 0, &_cholmodCommon);
+      fclose(tmp_file);
+    }
+
+    /* ------------------------------------------------------------ */
+
+    /* save a dense matrix to an octave file */
+    /* overwrites the existing file */
+    void save_octave_dense(cholmod_dense* A, const std::string file_name) {
+      FILE* tmp_file = fopen(file_name.c_str(), "w");
+      cholmod_write_dense(tmp_file, A, 0, &_cholmodCommon);
+      fclose(tmp_file);
+    }
+
     virtual ~LinearSolverCholmod()
     {
       delete _cholmodSparse;
@@ -116,6 +134,8 @@ class LinearSolverCholmod : public LinearSolverCCS<MatrixType>
     {
       //cerr << __PRETTY_FUNCTION__ << " using cholmod" << endl;
       fillCholmodExt(A, _cholmodFactor != 0); // _cholmodFactor used as bool, if not existing will copy the whole structure, otherwise only the values
+      // FIXME XXX
+      //fillCholmodExt(A, 0); // _cholmodFactor used as bool, if not existing will copy the whole structure, otherwise only the values
 
       if (_cholmodFactor == 0) {
         computeSymbolicDecomposition(A);
@@ -131,6 +151,7 @@ class LinearSolverCholmod : public LinearSolverCCS<MatrixType>
       bcholmod.xtype = CHOLMOD_REAL;
       bcholmod.dtype = CHOLMOD_DOUBLE;
 
+
       cholmod_factorize(_cholmodSparse, _cholmodFactor, &_cholmodCommon);
       if (_cholmodCommon.status == CHOLMOD_NOT_POSDEF) {
         if (_writeDebug) {
@@ -141,6 +162,7 @@ class LinearSolverCholmod : public LinearSolverCCS<MatrixType>
       }
 
       cholmod_dense* xcholmod = cholmod_solve(CHOLMOD_A, _cholmodFactor, &bcholmod, &_cholmodCommon);
+
       memcpy(x, xcholmod->x, sizeof(double) * bcholmod.nrow); // copy back to our array
       cholmod_free_dense(&xcholmod, &_cholmodCommon);
 
@@ -150,6 +172,42 @@ class LinearSolverCholmod : public LinearSolverCCS<MatrixType>
         globalStats->choleskyNNZ = static_cast<size_t>(_cholmodCommon.method[0].lnz);
       }
 
+      return true;
+    }
+
+    bool solveSpherical(double* x, double* b)
+    {
+      std::cout << "[VP]: solveSpherical(...) \n";
+      assert(_cholmodFactor);
+
+      double t=get_monotonic_time();
+
+      // setting up b for calling cholmod
+      cholmod_dense bcholmod;
+      bcholmod.nrow  = bcholmod.d = _cholmodFactor->n;
+      bcholmod.ncol  = 1;
+      bcholmod.x     = b;
+      bcholmod.xtype = CHOLMOD_REAL;
+      bcholmod.dtype = CHOLMOD_DOUBLE;
+
+      if (_cholmodCommon.status == CHOLMOD_NOT_POSDEF) {
+        if (_writeDebug) {
+          std::cerr << "Cholesky failure, writing debug.txt (Hessian loadable by Octave)" << std::endl;
+          saveMatrix("debug.txt");
+        }
+        return false;
+      }
+
+      cholmod_dense* xcholmod = cholmod_solve(CHOLMOD_A, _cholmodFactor, &bcholmod, &_cholmodCommon);
+
+      memcpy(x, xcholmod->x, sizeof(double) * bcholmod.nrow); // copy back to our array
+      cholmod_free_dense(&xcholmod, &_cholmodCommon);
+
+      G2OBatchStatistics* globalStats = G2OBatchStatistics::globalStats();
+      if (globalStats){
+        globalStats->timeNumericDecomposition = get_monotonic_time() - t;
+        globalStats->choleskyNNZ = static_cast<size_t>(_cholmodCommon.method[0].lnz);
+      }
       return true;
     }
 

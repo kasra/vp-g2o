@@ -32,7 +32,7 @@
 namespace g2o {
 
 Solver::Solver() :
-  _optimizer(0), _x(0), _b(0), _xSize(0), _maxXSize(0),
+  _optimizer(0), _x(0), _xLinear(0), _b(0), _bLinear(0), _xSize(0), _maxXSize(0), _xLinearSize(0),
   _isLevenberg(false), _additionalVectorSpace(0)
 {
 }
@@ -41,6 +41,8 @@ Solver::~Solver()
 {
   delete[] _x;
   delete[] _b;
+  delete[] _xLinear;
+  delete[] _bLinear;
 }
 
 void Solver::resizeVector(size_t sx)
@@ -52,8 +54,10 @@ void Solver::resizeVector(size_t sx)
     _maxXSize = 2*sx;
     delete[] _x;
     _x = new double[_maxXSize];
+    _xLinear = new double[_maxXSize];
 #ifndef NDEBUG
     memset(_x, 0, _maxXSize * sizeof(double));
+    memset(_xLinear, 0, _maxXSize * sizeof(double));
 #endif
     if (_b) { // backup the former b, might still be needed for online processing
       memcpy(_x, _b, oldSize * sizeof(double));
@@ -62,8 +66,11 @@ void Solver::resizeVector(size_t sx)
       std::swap(_b, _x);
     } else {
       _b = new double[_maxXSize];
+      // FIXME _bLinear size? more than what we really need
+      _bLinear = new double[_maxXSize];
 #ifndef NDEBUG
       memset(_b, 0, _maxXSize * sizeof(double));
+      memset(_bLinear, 0, _maxXSize * sizeof(double));
 #endif
     }
   }

@@ -266,6 +266,8 @@ namespace g2o {
      */
     void update(const double* update);
 
+    void updateLinear(const double* update);
+
     /**
        returns the set of batch statistics about the optimisation
     */

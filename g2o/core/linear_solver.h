@@ -57,6 +57,8 @@ class LinearSolver
      */
     virtual bool solve(const SparseBlockMatrix<MatrixType>& A, double* x, double* b) = 0;
 
+    virtual bool solveSpherical(double*, double*) { return true;}
+
     /**
      * Inverts the diagonal blocks of A
      * @returns false if not defined.

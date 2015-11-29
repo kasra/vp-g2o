@@ -58,11 +58,16 @@ namespace g2o {
                          Eigen::Matrix<double, Di, Dj, Di==1?Eigen::RowMajor:Eigen::ColMajor>::Flags & Eigen::AlignedBit ? Eigen::Aligned : Eigen::Unaligned > HessianBlockType;
       typedef Eigen::Map<Eigen::Matrix<double, Dj, Di, Dj==1?Eigen::RowMajor:Eigen::ColMajor>,
                          Eigen::Matrix<double, Dj, Di, Dj==1?Eigen::RowMajor:Eigen::ColMajor>::Flags & Eigen::AlignedBit ? Eigen::Aligned : Eigen::Unaligned > HessianBlockTransposedType;
+    typedef Eigen::Map<Eigen::Matrix<double, 2, 2, Eigen::ColMajor>, Eigen::Matrix<double, 2, 2, Eigen::ColMajor>::Flags & Eigen::AlignedBit ? Eigen::Aligned : Eigen::Unaligned >  HessianLinearBlockType;
+    typedef Eigen::Map<Eigen::Matrix<double, 2, 2, Eigen::ColMajor>, Eigen::Matrix<double, 2, 2, Eigen::ColMajor>::Flags & Eigen::AlignedBit ? Eigen::Aligned : Eigen::Unaligned >  HessianLinearBlockTransposedType;
 
       BaseBinaryEdge() : BaseEdge<D,E>(),
       _hessianRowMajor(false),
+      _hessianLinearRowMajor(false),
       _hessian(0, VertexXiType::Dimension, VertexXjType::Dimension), // HACK we map to the null pointer for initializing the Maps
       _hessianTransposed(0, VertexXjType::Dimension, VertexXiType::Dimension),
+      _hessianLinear(0, 2, 2), // HACK we map to the null pointer for initializing the Maps
+      _hessianLinearTransposed(0, 2, 2),
       _jacobianOplusXi(0, D, Di), _jacobianOplusXj(0, D, Dj)
       {
         _vertices.resize(2);
@@ -91,7 +96,13 @@ namespace g2o {
 
       virtual void constructQuadraticForm() ;
 
+      virtual void constructQuadraticFormRHS() ;
+
+      virtual void constructQuadraticFormLinear() ;
+
       virtual void mapHessianMemory(double* d, int i, int j, bool rowMajor);
+
+      virtual void mapHessianMemoryLinear(double* d, int i, int j, bool rowMajor);
 
       using BaseEdge<D,E>::resize;
       using BaseEdge<D,E>::computeError;
@@ -100,12 +111,16 @@ namespace g2o {
       using BaseEdge<D,E>::_measurement;
       using BaseEdge<D,E>::_information;
       using BaseEdge<D,E>::_error;
+      using BaseEdge<D,E>::_errorLinear;
       using BaseEdge<D,E>::_vertices;
       using BaseEdge<D,E>::_dimension;
 
       bool _hessianRowMajor;
+      bool _hessianLinearRowMajor;
       HessianBlockType _hessian;
       HessianBlockTransposedType _hessianTransposed;
+      HessianLinearBlockType _hessianLinear;
+      HessianLinearBlockTransposedType _hessianLinearTransposed;
       JacobianXiOplusType _jacobianOplusXi;
       JacobianXjOplusType _jacobianOplusXj;
 

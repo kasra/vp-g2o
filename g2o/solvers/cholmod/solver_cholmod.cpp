@@ -31,6 +31,7 @@
 #include "g2o/core/optimization_algorithm_factory.h"
 
 #include "g2o/core/optimization_algorithm_gauss_newton.h"
+#include "g2o/core/optimization_algorithm_variable_projection.h"
 #include "g2o/core/optimization_algorithm_levenberg.h"
 #include "g2o/core/optimization_algorithm_dogleg.h"
 
@@ -87,6 +88,9 @@ namespace g2o {
     if (methodName == "gn") {
       snl = new OptimizationAlgorithmGaussNewton(s);
     }
+    else if (methodName == "vp") {
+      snl = new OptimizationAlgorithmVP(s);
+    }
     else if (methodName == "lm") {
       snl = new OptimizationAlgorithmLevenberg(s);
     }
@@ -114,6 +118,7 @@ namespace g2o {
   G2O_REGISTER_OPTIMIZATION_LIBRARY(cholmod);
 
   G2O_REGISTER_OPTIMIZATION_ALGORITHM(gn_var_cholmod, new CholmodSolverCreator(OptimizationAlgorithmProperty("gn_var_cholmod", "Gauss-Newton: Cholesky solver using CHOLMOD (variable blocksize)", "CHOLMOD", false, Eigen::Dynamic, Eigen::Dynamic)));
+  G2O_REGISTER_OPTIMIZATION_ALGORITHM(vp_var_cholmod, new CholmodSolverCreator(OptimizationAlgorithmProperty("vp_var_cholmod", "Variable Projection: Cholesky solver using CHOLMOD (variable blocksize)", "CHOLMOD", false, Eigen::Dynamic, Eigen::Dynamic)));
   G2O_REGISTER_OPTIMIZATION_ALGORITHM(gn_fix3_2_cholmod, new CholmodSolverCreator(OptimizationAlgorithmProperty("gn_fix3_2_cholmod", "Gauss-Newton: Cholesky solver using CHOLMOD (fixed blocksize)", "CHOLMOD", true, 3, 2)));
   G2O_REGISTER_OPTIMIZATION_ALGORITHM(gn_fix6_3_cholmod, new CholmodSolverCreator(OptimizationAlgorithmProperty("gn_fix6_3_cholmod", "Gauss-Newton: Cholesky solver using CHOLMOD (fixed blocksize)", "CHOLMOD", true, 6, 3)));
   G2O_REGISTER_OPTIMIZATION_ALGORITHM(gn_fix7_3_cholmod, new CholmodSolverCreator(OptimizationAlgorithmProperty("gn_fix7_3_cholmod", "Gauss-Newton: Cholesky solver using CHOLMOD (fixed blocksize)", "CHOLMOD", true, 7, 3)));

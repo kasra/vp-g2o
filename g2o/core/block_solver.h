@@ -45,12 +45,14 @@ namespace g2o {
     static const int PoseDim = _PoseDim;
     static const int LandmarkDim = _LandmarkDim;
     typedef Eigen::Matrix<double, PoseDim, PoseDim, Eigen::ColMajor> PoseMatrixType;
+    typedef Eigen::Matrix<double, 2, 2, Eigen::ColMajor> PoseLinearMatrixType;
     typedef Eigen::Matrix<double, LandmarkDim, LandmarkDim, Eigen::ColMajor> LandmarkMatrixType;
     typedef Eigen::Matrix<double, PoseDim, LandmarkDim, Eigen::ColMajor> PoseLandmarkMatrixType;
     typedef Eigen::Matrix<double, PoseDim, 1, Eigen::ColMajor> PoseVectorType;
     typedef Eigen::Matrix<double, LandmarkDim, 1, Eigen::ColMajor> LandmarkVectorType;
 
     typedef SparseBlockMatrix<PoseMatrixType> PoseHessianType;
+    typedef SparseBlockMatrix<PoseLinearMatrixType> PoseLinearHessianType;
     typedef SparseBlockMatrix<LandmarkMatrixType> LandmarkHessianType;
     typedef SparseBlockMatrix<PoseLandmarkMatrixType> PoseLandmarkHessianType;
     typedef LinearSolver<PoseMatrixType> LinearSolverType;
@@ -65,12 +67,14 @@ namespace g2o {
     static const int PoseDim = Eigen::Dynamic;
     static const int LandmarkDim = Eigen::Dynamic;
     typedef MatrixXD PoseMatrixType;
+    typedef Eigen::Matrix2d PoseLinearMatrixType;
     typedef MatrixXD LandmarkMatrixType;
     typedef MatrixXD PoseLandmarkMatrixType;
     typedef VectorXD PoseVectorType;
     typedef VectorXD LandmarkVectorType;
 
     typedef SparseBlockMatrix<PoseMatrixType> PoseHessianType;
+    typedef SparseBlockMatrix<PoseLinearMatrixType> PoseLinearHessianType;
     typedef SparseBlockMatrix<LandmarkMatrixType> LandmarkHessianType;
     typedef SparseBlockMatrix<PoseLandmarkMatrixType> PoseLandmarkHessianType;
     typedef LinearSolver<PoseMatrixType> LinearSolverType;
@@ -99,12 +103,14 @@ namespace g2o {
       static const int PoseDim = Traits::PoseDim;
       static const int LandmarkDim = Traits::LandmarkDim;
       typedef typename Traits::PoseMatrixType PoseMatrixType;
+      typedef typename Traits::PoseLinearMatrixType PoseLinearMatrixType;
       typedef typename Traits::LandmarkMatrixType LandmarkMatrixType; 
       typedef typename Traits::PoseLandmarkMatrixType PoseLandmarkMatrixType;
       typedef typename Traits::PoseVectorType PoseVectorType;
       typedef typename Traits::LandmarkVectorType LandmarkVectorType;
 
       typedef typename Traits::PoseHessianType PoseHessianType;
+      typedef typename Traits::PoseLinearHessianType PoseLinearHessianType;
       typedef typename Traits::LandmarkHessianType LandmarkHessianType;
       typedef typename Traits::PoseLandmarkHessianType PoseLandmarkHessianType;
       typedef typename Traits::LinearSolverType LinearSolverType;
@@ -121,8 +127,11 @@ namespace g2o {
 
       virtual bool init(SparseOptimizer* optmizer, bool online = false);
       virtual bool buildStructure(bool zeroBlocks = false);
+      virtual bool buildStructureLinear(bool zeroBlocks = false);
       virtual bool updateStructure(const std::vector<HyperGraph::Vertex*>& vset, const HyperGraph::EdgeSet& edges);
       virtual bool buildSystem();
+      virtual bool buildSystemLinear();
+      virtual void buildSystemSpherical();
       virtual bool solve();
       virtual bool computeMarginals(SparseBlockMatrix<MatrixXD>& spinv, const std::vector<std::pair<int, int> >& blockIndices);
       virtual bool setLambda(double lambda, bool backup = false);
@@ -130,6 +139,8 @@ namespace g2o {
       virtual bool supportsSchur() {return true;}
       virtual bool schur() { return _doSchur;}
       virtual void setSchur(bool s) { _doSchur = s;}
+
+      virtual bool project(bool spherical = false);
 
       LinearSolver<PoseMatrixType>* linearSolver() const { return _linearSolver;}
 
@@ -143,10 +154,12 @@ namespace g2o {
     protected:
       void resize(int* blockPoseIndices, int numPoseBlocks, 
           int* blockLandmarkIndices, int numLandmarkBlocks, int totalDim);
+      void resizeLinear(int* blockPoseIndices, int numPoseBlocks, int totalDim);
 
       void deallocate();
 
       SparseBlockMatrix<PoseMatrixType>* _Hpp;
+      SparseBlockMatrix<Eigen::Matrix2d>* _HppLinear;
       SparseBlockMatrix<LandmarkMatrixType>* _Hll;
       SparseBlockMatrix<PoseLandmarkMatrixType>* _Hpl;
 
@@ -157,6 +170,7 @@ namespace g2o {
       SparseBlockMatrixCCS<PoseMatrixType>* _HschurTransposedCCS;
 
       LinearSolver<PoseMatrixType>* _linearSolver;
+      LinearSolver<Eigen::Matrix2d>* _linearSolverProj;
 
       std::vector<PoseVectorType, Eigen::aligned_allocator<PoseVectorType> > _diagonalBackupPose;
       std::vector<LandmarkVectorType, Eigen::aligned_allocator<LandmarkVectorType> > _diagonalBackupLandmark;

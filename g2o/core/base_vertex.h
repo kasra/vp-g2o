@@ -57,6 +57,7 @@ namespace g2o {
     static const int Dimension = D;           ///< dimension of the estimate (minimal) in the manifold space
 
     typedef Eigen::Map<Eigen::Matrix<double, D, D, Eigen::ColMajor>, Eigen::Matrix<double, D, D, Eigen::ColMajor>::Flags & Eigen::AlignedBit ? Eigen::Aligned : Eigen::Unaligned >  HessianBlockType;
+    typedef Eigen::Map<Eigen::Matrix<double, 2, 2, Eigen::ColMajor>, Eigen::Matrix<double, 2, 2, Eigen::ColMajor>::Flags & Eigen::AlignedBit ? Eigen::Aligned : Eigen::Unaligned >  HessianLinearBlockType;
 
   public:
     BaseVertex();
@@ -67,17 +68,28 @@ namespace g2o {
     virtual double* hessianData() { return const_cast<double*>(_hessian.data());}
 
     virtual void mapHessianMemory(double* d);
+    virtual void mapHessianMemoryLinear(double* d);
 
     virtual int copyB(double* b_) const {
       memcpy(b_, _b.data(), Dimension * sizeof(double));
       return Dimension; 
     }
 
+    virtual int copyBLinear(double* b_) const {
+      // FIXME 2->DLinear?
+      memcpy(b_, _bLinear.data(), 2 * sizeof(double));
+      return 2;
+    }
+
     virtual const double& b(int i) const { assert(i < D); return _b(i);}
+    virtual const double& bLinear(int i) const { assert(i < D); return _bLinear(i);}
     virtual double& b(int i) { assert(i < D); return _b(i);}
+    virtual double& bLinear(int i) { assert(i < D); return _bLinear(i);}
     virtual double* bData() { return _b.data();}
+    virtual double* bLinearData() { return _bLinear.data();}
 
     virtual void clearQuadraticForm();
+    virtual void clearQuadraticFormLinear();
 
     //! updates the current vertex with the direct solution x += H_ii\b_ii
     //! @returns the determinant of the inverted hessian
@@ -85,10 +97,15 @@ namespace g2o {
 
     //! return right hand side b of the constructed linear system
     Eigen::Matrix<double, D, 1, Eigen::ColMajor>& b() { return _b;}
+    Eigen::Matrix<double, 2, 1, Eigen::ColMajor>& bLinear() { return _bLinear;}
     const Eigen::Matrix<double, D, 1, Eigen::ColMajor>& b() const { return _b;}
+    const Eigen::Matrix<double, 2, 1, Eigen::ColMajor>& bLinear() const { return _bLinear;}
     //! return the hessian block associated with the vertex
     HessianBlockType& A() { return _hessian;}
     const HessianBlockType& A() const { return _hessian;}
+
+    HessianLinearBlockType& ALinear() { return _hessianLinear;}
+    const HessianLinearBlockType& ALinear() const { return _hessianLinear;}
 
     virtual void push() { _backup.push(_estimate);}
     virtual void pop() { assert(!_backup.empty()); _estimate = _backup.top(); _backup.pop(); updateCache();}
@@ -102,7 +119,10 @@ namespace g2o {
 
   protected:
     HessianBlockType _hessian;
+    HessianLinearBlockType _hessianLinear;
     Eigen::Matrix<double, D, 1, Eigen::ColMajor> _b;
+    // FIXME 2->DLinear
+    Eigen::Matrix<double, 2, 1, Eigen::ColMajor> _bLinear;
     EstimateType _estimate;
     BackupStackType _backup;
   public:

@@ -33,6 +33,8 @@
 #include "g2o/stuff/macros.h"
 #include "g2o/stuff/misc.h"
 
+#include "g2o/solvers/cholmod/linear_solver_cholmod.h"
+
 namespace g2o {
 
 template <typename Traits>
@@ -56,6 +58,8 @@ BlockSolver<Traits>::BlockSolver(LinearSolverType* linearSolver) :
   _sizePoses=0;
   _sizeLandmarks=0;
   _doSchur=true;
+  _linearSolverProj = new LinearSolverCholmod<Eigen::Matrix2d>();
+  _HppLinear=0;
 }
 
 template <typename Traits>
@@ -86,6 +90,19 @@ void BlockSolver<Traits>::resize(int* blockPoseIndices, int numPoseBlocks,
     _coefficientsMutex.resize(numPoseBlocks);
 #endif
   }
+}
+
+template <typename Traits>
+void BlockSolver<Traits>::resizeLinear(int* blockPoseIndices, int numPoseBlocks, int s)
+{
+  if (_HppLinear){
+    delete _HppLinear;
+    _HppLinear=0;
+  }
+
+  resizeVector(s);
+
+  _HppLinear=new PoseLinearHessianType(blockPoseIndices, blockPoseIndices, numPoseBlocks, numPoseBlocks);
 }
 
 template <typename Traits>
@@ -133,7 +150,80 @@ template <typename Traits>
 BlockSolver<Traits>::~BlockSolver()
 {
   delete _linearSolver;
+  delete _linearSolverProj;
   deallocate();
+}
+
+
+template <typename Traits>
+bool BlockSolver<Traits>::buildStructureLinear(bool zeroBlocks)
+{
+  assert(_optimizer);
+
+  size_t sparseDim = 0;
+  _numPoses=0;
+  _sizePoses=0;
+  int* blockPoseIndices = new int[_optimizer->indexMapping().size()];
+
+  for (size_t i = 0; i < _optimizer->indexMapping().size(); ++i) {
+    OptimizableGraph::Vertex* v = _optimizer->indexMapping()[i];
+    // TODO use linearDim instead of -1!
+    int dim = v->dimension() - 1;
+    if (! v->marginalized()){
+      //v->setColInHessian(_sizePoses);
+      _sizePoses+=dim;
+      blockPoseIndices[_numPoses]=_sizePoses;
+      ++_numPoses;
+    } 
+    sparseDim += dim;
+  }
+  resizeLinear(blockPoseIndices, _numPoses, sparseDim);
+  delete[] blockPoseIndices;
+
+  // allocate the diagonal on Hpp and Hll
+  int poseIdx = 0;
+  for (size_t i = 0; i < _optimizer->indexMapping().size(); ++i) {
+    OptimizableGraph::Vertex* v = _optimizer->indexMapping()[i];
+    if (! v->marginalized()){
+      PoseLinearMatrixType* m = _HppLinear->block(poseIdx, poseIdx, true);
+      if (zeroBlocks)
+        m->setZero();
+      v->mapHessianMemoryLinear(m->data());
+      ++poseIdx;
+    }
+  }
+  assert(poseIdx == _numPoses);
+
+  // here we assume that the landmark indices start after the pose ones
+  // create the structure in Hpp, Hll and in Hpl
+  for (SparseOptimizer::EdgeContainer::const_iterator it=_optimizer->activeEdges().begin(); it!=_optimizer->activeEdges().end(); ++it){
+    OptimizableGraph::Edge* e = *it;
+    for (size_t viIdx = 0; viIdx < e->vertices().size(); ++viIdx) {
+      OptimizableGraph::Vertex* v1 = (OptimizableGraph::Vertex*) e->vertex(viIdx);
+      int ind1 = v1->hessianIndex();
+      if (ind1 == -1)
+        continue;
+      int indexV1Bak = ind1;
+      for (size_t vjIdx = viIdx + 1; vjIdx < e->vertices().size(); ++vjIdx) {
+        OptimizableGraph::Vertex* v2 = (OptimizableGraph::Vertex*) e->vertex(vjIdx);
+        int ind2 = v2->hessianIndex();
+        if (ind2 == -1)
+          continue;
+        ind1 = indexV1Bak;
+        bool transposedBlock = ind1 > ind2;
+        if (transposedBlock){ // make sure, we allocate the upper triangle block
+          std::swap(ind1, ind2);
+        }
+        if (! v1->marginalized() && !v2->marginalized()){
+          PoseLinearMatrixType* m = _HppLinear->block(ind1, ind2, true);
+          if (zeroBlocks)
+            m->setZero();
+          e->mapHessianMemoryLinear(m->data(), viIdx, vjIdx, transposedBlock);
+        }
+      }
+    }
+  }
+  return true;
 }
 
 template <typename Traits>
@@ -250,6 +340,7 @@ bool BlockSolver<Traits>::buildStructure(bool zeroBlocks)
     }
   }
 
+
   if (! _doSchur)
     return true;
 
@@ -353,6 +444,7 @@ bool BlockSolver<Traits>::solve(){
   if (! _doSchur){
     double t=get_monotonic_time();
     bool ok = _linearSolver->solve(*_Hpp, _x, _b);
+
     G2OBatchStatistics* globalStats = G2OBatchStatistics::globalStats();
     if (globalStats) {
       globalStats->timeLinearSolver = get_monotonic_time() - t;
@@ -484,6 +576,19 @@ bool BlockSolver<Traits>::solve(){
 
 
 template <typename Traits>
+bool BlockSolver<Traits>::project(bool spherical)
+{
+  bool okLinear = true;
+  if (spherical)
+    okLinear = _linearSolverProj->solveSpherical(_xLinear, _bLinear);
+  else
+    okLinear = _linearSolverProj->solve(*_HppLinear, _xLinear, _bLinear);
+
+  assert(okLinear && "Projection Linear System Failed");
+  return okLinear;
+}
+
+template <typename Traits>
 bool BlockSolver<Traits>::computeMarginals(SparseBlockMatrix<MatrixXD>& spinv, const std::vector<std::pair<int, int> >& blockIndices)
 {
   double t = get_monotonic_time();
@@ -556,6 +661,121 @@ bool BlockSolver<Traits>::buildSystem()
   return 0;
 }
 
+template <typename Traits>
+bool BlockSolver<Traits>::buildSystemLinear()
+{
+  // clear b vector
+# ifdef G2O_OPENMP
+# pragma omp parallel for default (shared) if (_optimizer->indexMapping().size() > 1000)
+# endif
+  for (int i = 0; i < static_cast<int>(_optimizer->indexMapping().size()); ++i) {
+    OptimizableGraph::Vertex* v=_optimizer->indexMapping()[i];
+    assert(v);
+    v->clearQuadraticFormLinear();
+  }
+  _HppLinear->clear();
+
+  // resetting the terms for the pairwise constraints
+  // built up the current system by storing the Hessian blocks in the edges and vertices
+# ifndef G2O_OPENMP
+  // no threading, we do not need to copy the workspace
+  JacobianWorkspace& jacobianWorkspace = _optimizer->jacobianWorkspace();
+# else
+  // if running with threads need to produce copies of the workspace for each thread
+  JacobianWorkspace jacobianWorkspace = _optimizer->jacobianWorkspace();
+# pragma omp parallel for default (shared) firstprivate(jacobianWorkspace) if (_optimizer->activeEdges().size() > 100)
+# endif
+  for (int k = 0; k < static_cast<int>(_optimizer->activeEdges().size()); ++k) {
+    OptimizableGraph::Edge* e = _optimizer->activeEdges()[k];
+    e->linearizeOplus(jacobianWorkspace); // jacobian of the nodes' oplus (manifold)
+    e->constructQuadraticFormLinear();
+#  ifndef NDEBUG
+    for (size_t i = 0; i < e->vertices().size(); ++i) {
+      const OptimizableGraph::Vertex* v = static_cast<const OptimizableGraph::Vertex*>(e->vertex(i));
+      if (! v->fixed()) {
+        bool hasANan = arrayHasNaN(jacobianWorkspace.workspaceForVertex(i), e->dimension() * v->dimension());
+        if (hasANan) {
+          std::cerr << "buildSystemLinear(): NaN within Jacobian for edge " << e << " for vertex " << i << std::endl;
+          break;
+        }
+      }
+    }
+#  endif
+  }
+
+  // flush the current system in a sparse block matrix
+# ifdef G2O_OPENMP
+# pragma omp parallel for default (shared) if (_optimizer->indexMapping().size() > 1000)
+# endif
+  for (int i = 0; i < static_cast<int>(_optimizer->indexMapping().size()); ++i) {
+    OptimizableGraph::Vertex* v=_optimizer->indexMapping()[i];
+    int iBase = v->colInHessian();
+    if (v->marginalized())
+      iBase+=_sizePoses;
+    // FIXME
+    int iBaseLinear = (iBase/3) * 2;
+    v->copyBLinear(_bLinear+iBaseLinear);
+  }
+
+  return 0;
+}
+
+template <typename Traits>
+void BlockSolver<Traits>::buildSystemSpherical()
+{
+  // clear b vector
+# ifdef G2O_OPENMP
+# pragma omp parallel for default (shared) if (_optimizer->indexMapping().size() > 1000)
+# endif
+  for (int i = 0; i < static_cast<int>(_optimizer->indexMapping().size()); ++i) {
+    OptimizableGraph::Vertex* v=_optimizer->indexMapping()[i];
+    assert(v);
+    v->clearQuadraticFormLinear();
+  }
+  _HppLinear->clear();
+
+  // resetting the terms for the pairwise constraints
+  // built up the current system by storing the Hessian blocks in the edges and vertices
+# ifndef G2O_OPENMP
+  // no threading, we do not need to copy the workspace
+  JacobianWorkspace& jacobianWorkspace = _optimizer->jacobianWorkspace();
+# else
+  // if running with threads need to produce copies of the workspace for each thread
+  JacobianWorkspace jacobianWorkspace = _optimizer->jacobianWorkspace();
+# pragma omp parallel for default (shared) firstprivate(jacobianWorkspace) if (_optimizer->activeEdges().size() > 100)
+# endif
+  for (int k = 0; k < static_cast<int>(_optimizer->activeEdges().size()); ++k) {
+    OptimizableGraph::Edge* e = _optimizer->activeEdges()[k];
+    e->linearizeOplus(jacobianWorkspace); // jacobian of the nodes' oplus (manifold)
+    e->constructQuadraticFormRHS();
+#  ifndef NDEBUG
+    for (size_t i = 0; i < e->vertices().size(); ++i) {
+      const OptimizableGraph::Vertex* v = static_cast<const OptimizableGraph::Vertex*>(e->vertex(i));
+      if (! v->fixed()) {
+        bool hasANan = arrayHasNaN(jacobianWorkspace.workspaceForVertex(i), e->dimension() * v->dimension());
+        if (hasANan) {
+          std::cerr << "buildSystemSpherical(): NaN within Jacobian for edge " << e << " for vertex " << i << std::endl;
+          break;
+        }
+      }
+    }
+#  endif
+  }
+
+  // flush the current system in a sparse block matrix
+# ifdef G2O_OPENMP
+# pragma omp parallel for default (shared) if (_optimizer->indexMapping().size() > 1000)
+# endif
+  for (int i = 0; i < static_cast<int>(_optimizer->indexMapping().size()); ++i) {
+    OptimizableGraph::Vertex* v=_optimizer->indexMapping()[i];
+    int iBase = v->colInHessian();
+    if (v->marginalized())
+      iBase+=_sizePoses;
+    // FIXME
+    int iBaseLinear = (iBase/3) * 2;
+    v->copyBLinear(_bLinear+iBaseLinear);
+  }
+}
 
 template <typename Traits>
 bool BlockSolver<Traits>::setLambda(double lambda, bool backup)
@@ -613,6 +833,7 @@ bool BlockSolver<Traits>::init(SparseOptimizer* optimizer, bool online)
       _Hll->clear();
   }
   _linearSolver->init();
+  _linearSolverProj->init();
   return true;
 }
 

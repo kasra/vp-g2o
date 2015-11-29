@@ -126,12 +126,14 @@ namespace g2o {
 
         /** maps the internal matrix to some external memory location */
         virtual void mapHessianMemory(double* d) = 0;
+        virtual void mapHessianMemoryLinear(double* d) = 0;
 
         /**
          * copies the b vector in the array b_
          * @return the number of elements copied
          */
         virtual int copyB(double* b_) const = 0;
+        virtual int copyBLinear(double* b_) const = 0;
 
         //! get the b vector element
         virtual const double& b(int i) const = 0;
@@ -143,6 +145,7 @@ namespace g2o {
          * set the b vector part of this vertex to zero
          */
         virtual void clearQuadraticForm() = 0;
+        virtual void clearQuadraticFormLinear() = 0;
 
         /**
          * updates the current vertex with the direct solution x += H_ii\b_ii
@@ -405,6 +408,10 @@ namespace g2o {
          */
         virtual void constructQuadraticForm() = 0;
 
+        virtual void constructQuadraticFormRHS() {}
+
+        virtual void constructQuadraticFormLinear() {} //FIXME pure virtual
+
         /**
          * maps the internal matrix to some external memory location,
          * you need to provide the memory before calling constructQuadraticForm
@@ -414,6 +421,8 @@ namespace g2o {
          * @param rowMajor if true, will write in rowMajor order to the block. Since EIGEN is columnMajor by default, this results in writing the transposed
          */
         virtual void mapHessianMemory(double* d, int i, int j, bool rowMajor) = 0;
+
+        virtual void mapHessianMemoryLinear(double*, int, int, bool) {}
 
         /**
          * Linearizes the constraint in the edge in the manifold space, and store

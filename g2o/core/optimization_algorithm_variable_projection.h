@@ -2,6 +2,12 @@
 // Copyright (C) 2011 R. Kuemmerle, G. Grisetti, W. Burgard
 // All rights reserved.
 //
+// Copyright (C) 2015 K. Khosoussi, S. Huang and G. Dissanayake
+// Centre for Autonomous Systems (CAS)
+// University of Technology Sydney
+// (https://kasra.github.io)
+// See "Exploiting the Separable Structure of SLAM" @ RSS 2015.
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
 // met:
@@ -24,45 +30,43 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-template <int D, typename T>
-BaseVertex<D, T>::BaseVertex() :
-  OptimizableGraph::Vertex(),
-  _hessian(0, D, D),
-  _hessianLinear(0, 2, 2)
-{
-  _dimension = D;
-}
+#ifndef G2O_OPTIMIZATION_ALGORITHM_VP_H
+#define G2O_OPTIMIZATION_ALGORITHM_VP_H
 
-template <int D, typename T>
-double BaseVertex<D, T>::solveDirect(double lambda) {
-  Eigen::Matrix<double, D, D, Eigen::ColMajor> tempA=_hessian + Eigen::Matrix<double, D, D, Eigen::ColMajor>::Identity()*lambda;
-  double det=tempA.determinant();
-  if (g2o_isnan(det) || det < std::numeric_limits<double>::epsilon())
-    return det;
-  Eigen::Matrix<double, D, 1, Eigen::ColMajor> dx=tempA.llt().solve(_b);
-  oplus(&dx[0]);
-  return det;
-}
+#include "g2o_core_api.h"
+#include "optimization_algorithm_with_hessian.h"
 
-template <int D, typename T>
-void BaseVertex<D, T>::clearQuadraticForm() {
-  _b.setZero();
-}
+namespace g2o {
 
-template <int D, typename T>
-void BaseVertex<D, T>::clearQuadraticFormLinear() {
-  _bLinear.setZero();
-}
+  /**
+   * \brief Implementation of the Variable Projection Algorithm
+   */
+  class G2O_CORE_API OptimizationAlgorithmVP : public OptimizationAlgorithmWithHessian
+  {
+    public:
+      /**
+       * construct the Variable Projection algorithm, which use the given Solver for solving the
+       * linearized system.
+       */
+      explicit OptimizationAlgorithmVP(Solver* solver);
+      virtual ~OptimizationAlgorithmVP();
 
-template <int D, typename T>
-void BaseVertex<D, T>::mapHessianMemory(double* d)
-{
-  new (&_hessian) HessianBlockType(d, D, D);
-}
+      virtual SolverResult solve(int iteration, bool online = false);
 
+      virtual void printVerbose(std::ostream& os) const;
 
-template <int D, typename T>
-void BaseVertex<D, T>::mapHessianMemoryLinear(double* d)
-{
-  new (&_hessianLinear) HessianLinearBlockType(d, 2, 2);
-}
+    private:
+      /**
+       * project on the next iteration?
+       */ 
+      bool _projectNextIter;
+
+      /**
+       * Threshold for \gamma to 
+       */
+      double _gammaThreshold;
+  };
+
+} // end namespace
+
+#endif
